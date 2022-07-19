@@ -33,6 +33,7 @@ import scipy.constants as const
 from scipy.optimize import root
 import numpy as np
 from numpy.polynomial import Polynomial
+from sys import exit
 
 Rg = const.R
 kb = const.Boltzmann
@@ -51,7 +52,7 @@ class EOS():
         self.mu, self.excessMu, self.idealMu = 0, 0, 0 #J/mol
         self.phase, self.eos = '', ''
         self.state = {}
-        self.P, self.T, self.Dmolar = 0, 0, 0 #Pa, K, kg/mol
+        self.P, self.P_sat, self.bulkModulus, self.T, self.Dmolar = 0, 0, 0, 0, 0 #Pa, Pa, Pa, K, kg/mol
         #For Johnson EOS---------------------------------------------------------------------------
         self.epsilon = epsilon #K
         self.sigma = sigma #m
@@ -76,6 +77,7 @@ class EOS():
         if eos == 'Johnson':
             roots = self.rho
             state = self.state
+            epsilon, sigma = self.epsilon, self.sigma #K, m^3
             P, T = state['P']*sigma**3/(kb*epsilon), state['T']/epsilon
             zFactor = P/(roots*T)
         else:
@@ -114,37 +116,66 @@ class EOS():
         phi = np.nan_to_num(phi,nan=1e3)
         self.phi = phi
 
+    def FindSaturationPressure(self):
+        # Check how to calculate Psat for Johnson EOS!
+        eos = self.eos
+        if eos == 'Peng-Robinson': self.PengRobinsonEOS()
+        elif eos == 'VdW': self.VdWEOS()
+        elif eos == 'Soave': self.SoaveEOS()
+        elif eos == 'Ideal': self.IdealEOS()
+        elif eos == 'Johnson': self.JohnsonEOS()
+        self.ZFactors()
+        self.Phi()
+        targetP, pSat = self.state['P'], self.P_sat #Pa, Pa
+        tolerance = 1e-2
+        for trialP in np.linspace(1e-5,1e9,int(1e7)):
+            self.state['P'] = trialP #Pa
+            if eos == 'Peng-Robinson': self.PengRobinsonEOS()
+            elif eos == 'VdW': self.VdWEOS()
+            elif eos == 'Soave': self.SoaveEOS()
+            elif eos == 'Ideal': self.IdealEOS()
+            elif eos == 'Johnson': self.JohnsonEOS()
+            self.ZFactors()
+            self.Phi()
+            phi = self.phi
+            if (len(phi) == 1): 
+                print('Waring: Unable to find saturation pressure. Try using a lower temperature.')
+                pSat = 0
+                break
+            if (abs(phi[0]-phi[-1]) < tolerance): 
+                pSat = trialP #Pa
+                break
+        self.P_sat = pSat #Pa
+        self.state['P'] = targetP #Pa
+
     def Phase(self):
         zFactor = self.zFactor
         phi = self.phi
+        state = self.state
         Tc = self.Tc
         Pc = self.Pc
-        phase = self.phase
-        state = self.state
         eos = self.eos
-        T, P = state['T'], state['P'] #K, Pa
-        if (len(zFactor) == 1) or (zFactor[0] <= 0): 
-            phi = phi[-1]
-            zFactor = zFactor[-1]
-            if (T > Tc) and (P > Pc): phase = 'super_critical_fluid'
-            elif (T < Tc) and (P < Pc): phase = 'Vapour'
-            elif (T < Tc) and (P > Pc): phase =  'Liquid'
-        else:
-            # Vapour (stable), liquid (metastable)
-            if phi[-1] < phi[0]: 
+        T, P, pSat = state['T'], state['P'], self.P_sat #K, Pa, Pa
+        if pSat != 0:
+            if (len(zFactor) == 1) or (zFactor[0] <= 0): 
                 phi = phi[-1]
                 zFactor = zFactor[-1]
-                phase = 'Vapour (stable) - Liquid (metastable)'
-            # Vapour (metastable), liquid (stable)
-            elif phi[-1] > phi[0]: 
-                phi = phi[0]
-                zFactor = zFactor[0]
-                phase = 'Vapour (metastable) - Liquid (stable)'
-            # Vapour (stable), liquid (stable)
-            else: 
-                phi = phi[-1]
-                zFactor = zFactor[-1]
-                phase = 'Vapour (stable) - Liquid (stable)'
+                if (T > Tc) and (P > Pc): phase = 'super_critical_fluid'
+                elif (T < Tc) and (P < Pc): phase = 'Vapour'
+                elif (T < Tc) and (P > Pc): phase =  'Liquid'
+            else:
+                if P < pSat: #if phi[0] > phi[-1]: 
+                    phi, zFactor = phi[-1], zFactor[-1]
+                    phase = 'Vapour (stable) - Liquid (metastable)'
+                # Vapour (metastable), liquid (stable)
+                elif P > pSat: #elif phi[0] < phi[-1]: 
+                    phi, zFactor = phi[0], zFactor[0]
+                    phase = 'Vapour (metastable) - Liquid (stable)'
+                # Vapour (stable), liquid (stable)
+                else: 
+                    phi, zFactor = phi[0], zFactor[0]
+                    phase = 'Vapour (stable) - Liquid (stable)'
+        else: phase = 'Unpredicted'
         if not 'Dmolar' in state.keys(): 
             rhoMolar = (P/(zFactor*Rg*T)) #mol/m^3
             state['Dmolar'] = rhoMolar
@@ -156,18 +187,12 @@ class EOS():
         self.state = state
         self.P, self.T, self.Dmolar = state['P'], state['T'], state['Dmolar']
 
-    def Fugacity(self): 
-        P = self.state['P']
-        phi = self.phi
-        fugacity = phi*P #Pa
-        self.fugacity = fugacity #Pa
-
     def ChemicalPotential(self):
         state = self.state
-        fugacity = self.fugacity #Pa
         phi = self.phi
         mass = self.mass #kg
         T, P, rhoN = state['T'], state['P'], state['Dn']
+        fugacity = phi*P #Pa
         thermalWL = planck/np.sqrt(2*np.pi*mass*kb*T) #m
         # Ideal Mu uses the density calculated from an EOS.
         idealMu = Rg*T*np.log(rhoN*thermalWL**3) #J/mol
@@ -176,6 +201,7 @@ class EOS():
         self.idealMu = idealMu
         self.excessMu = excessMu
         self.mu = mu
+        self.fugacity = fugacity #Pa
 
     def PengRobinsonEOS(self):
         def EOSTV(T,V,P0,ac,kappa,b): 
@@ -416,14 +442,14 @@ class EOS():
             P, T = state['P']*sigma**3/(kb*epsilon), state['T']/epsilon
             helmholtz, roots = [], []
             linspace = np.linspace(0,1,10,endpoint=False)
-            # for i in range(len(linspace)): #Check!
-                # findRoots = root(EOSRhoT,x0=linspace[i],args=(T,P))
-                # if findRoots.success:
-                    # roots.append(round(findRoots.x[0],9))
+            for i in range(len(linspace)): #Check!
+                findRoots = root(EOSRhoT,x0=linspace[i],args=(T,P))
+                if findRoots.success:
+                    roots.append(round(findRoots.x[0],9))
             #-------------------------------------------------------------
-            findRoots = root(EOSRhoT,x0=0,args=(T,P))
-            if not findRoots.success: findRoots = root(EOSRhoT,x0=1,args=(T,P))
-            roots.append(findRoots.x[0])
+            # findRoots = root(EOSRhoT,x0=0,args=(T,P))
+            # if not findRoots.success: findRoots = root(EOSRhoT,x0=1,args=(T,P))
+            # roots.append(findRoots.x[0])
             #-------------------------------------------------------------
             roots = np.unique(np.array(roots))
             for i in roots: helmholtz.append(Helmholtz(i))
@@ -434,6 +460,35 @@ class EOS():
         self.Tc, self.Pc = Tc, Pc
         self.state = state
 
+    def BulkModulus(self):
+        eos = self.eos
+        state = self.state
+        bulkModulus = 0
+        if eos == 'Ideal': 
+            P = state['P'] #Pa
+            bulkModulus = P
+        elif eos == 'VdW': bulkModulus = -1 #Check!
+        elif eos == 'Soave': bulkModulus = -1 #Check!
+        elif eos == 'Peng-Robinson': 
+            aLowC, alpha, bLow = self.aLowC, self.alpha, self.bLow
+            aLow = aLowC*alpha
+            T, rho = state['T'], state['Dmolar'] #K, mol/m^3
+            Vm = 1/rho #m^3/mol
+            bulkModulus = Vm*(Rg*T/(Vm-bLow)**2 - 2*aLow*(Vm+bLow) / (Vm*(Vm+bLow)+bLow*(Vm-bLow))**2) #Pa
+        elif eos == 'Johnson':
+            epsilon, sigma = self.epsilon, self.sigma
+            aCoeff, bCoeff, gamma = self.aCoeff, self.bCoeff, self.gamma
+            P = state['P']*sigma**3/(kb*epsilon)
+            T = state['T']/epsilon
+            rho = state['Dmolar']*avogadro*sigma**3
+            fExp = np.exp(-gamma*rho**2)
+            sum8, sum6 = 0, 0
+            for i in range(1,9): sum8 += i*aCoeff[i]*rho**(i+1)
+            for i in range(1,7): sum6 += bCoeff[i]*(i-gamma*rho**2)*rho**(2*i+1)
+            bulkModulus = P + sum8 + 2*fExp*sum6
+            bulkModulus *= kb*epsilon/sigma**3 #Pa
+        self.bulkModulus = bulkModulus
+
     def Errors(self):
         state = self.state
         eos = self.eos
@@ -443,10 +498,12 @@ class EOS():
         if eos == '':
             raise KeyError ('Equation of state was not defined. Equations available: Peng-Robinson, Soave, Ideal.')
 
-    def ThermodynamicState(self,eos,**state):
+    def ThermodynamicState(self, eos, P_sat=0, **state):
         self.state = state
         self.eos = eos
+        self.P_sat = P_sat #Pa
         self.Errors()
+        if not P_sat: self.FindSaturationPressure()
         if eos == 'Peng-Robinson': self.PengRobinsonEOS()
         elif eos == 'VdW': self.VdWEOS()
         elif eos == 'Soave': self.SoaveEOS()
@@ -455,9 +512,9 @@ class EOS():
         self.ZFactors()
         self.Phi()
         self.Phase()        
-        self.Fugacity()
         self.ChemicalPotential()
-
+        self.BulkModulus()
+    
 def Help():
     print('Description: It computes the fluid\'s properties according to a given EOS.\n'
           '\tAvailable EOS:\n'
@@ -471,7 +528,8 @@ def Help():
           '\t\tidealMu (ideal part of mu), excessMu (excess part of mu), phase (liquid or vapour),\n'
           '\t\tmass (fluid\'s mass), molarMass (fluid\'s molar mass), Pc (critical pressure),\n'
           '\t\tTc (critical temperature), omega (acentric factor), P (system\'s pressure),\n'
-          '\t\tT (system\'s temperature), Dmolar (system\'s molar density).\n'
+          '\t\tT (system\'s temperature), Dmolar (system\'s molar density),\n'
+          '\t\tbulkModulus (fluid\'s bulk modulus).\n'
           '\n'          
           '\tNote: The script only works with SI units (kg, m, J, K, Pa, mol, ...).\n'
           '\n\n'
@@ -491,47 +549,70 @@ def Help():
 
 ################################################################################
 if __name__ == '__main__':
+    from CoolProp.CoolProp import PropsSI, PhaseSI
     # Argon
-    Pc = 4863000.0 #Pa
-    Tc = 150.687 #K
+    T_0 = 87.3 #K
+    P_0 = 0.5*PropsSI('P','T',T_0,'Q',1,'Argon') #Pa. At T_0 = 119.6 K. Saturation pressure.
+    Dm_0 = PropsSI('Dmolar','T',T_0,'P',P_0,'Argon') #kg/mol. At T_0 = 119.6 K.
+    Psat = PropsSI('P','T',T_0,'Q',1,'Argon')
+    Pc = PropsSI('Pcrit','Argon') #Pa
+    Tc = PropsSI('Tcrit','Argon') #K
     Mm = 39.948e-3 #kg/mol
     epsilon = 119.6 #K
     sigma = 0.34e-9 #m
-    T_0 = 119.6 #K
-    P_0 = 1186448.1076997803 #Pa. At T_0 = 119.6 K. Saturation pressure.
-    Dm_0 = 1472.1133003978823 #kg/mol. At T_0 = 119.6 K. Vapour phase at saturation.
+    print('CoolProp') #----------------------------------------------------------
+    print('Psat[Pa]:',Psat) 
+    print('P[Pa]:',PropsSI('P','T',T_0,'P',P_0,'Argon'))
+    print('Z:',PropsSI('Z','T',T_0,'P',P_0,'Argon'))
+    print('Dmolar[mol/m^3]:',PropsSI('Dmolar','T',T_0,'P',P_0,'Argon'))
+    print('phase:',PhaseSI('T',T_0,'P',P_0,'Argon'))
+    print('K_T[GPa]:',1e-9/PropsSI('ISOTHERMAL_COMPRESSIBILITY','T',T_0,'P',P_0,'Argon'))
     system = EOS(Pc=Pc, Tc=Tc, epsilon=epsilon, sigma=sigma, molarMass=Mm)
-    print('Soave EOS') #-------------------------------------------------------
-    system.ThermodynamicState(eos='Soave', T=T_0, P=P_0)
+    print('\nSoave EOS') #-------------------------------------------------------
+    system.ThermodynamicState(eos='Soave', T=T_0, P=P_0, P_sat=Psat)
+    print('Psat[Pa]:',system.P_sat)
     print('P[Pa]:',P_0)
     print('phi:',system.phi)
     print('Mu[kJ/mol]:',system.mu*1e-3)
+    print('Z:',system.zFactor)
     print('Dmolar[mol/m^3]:',system.Dmolar)
     print('phase:',system.phase)
     print('\nPeng-Robinson EOS') #-----------------------------------------------
-    system.ThermodynamicState(eos='Peng-Robinson', T=T_0, P=P_0)
+    system.ThermodynamicState(eos='Peng-Robinson', T=T_0, P=P_0, P_sat=Psat)
+    print('Psat[Pa]:',system.P_sat)
     print('P[Pa]:',P_0)
     print('phi:',system.phi)
     print('Mu[kJ/mol]:',system.mu*1e-3)
+    print('Z:',system.zFactor)
     print('Dmolar[mol/m^3]:',system.Dmolar)
     print('phase:',system.phase)
+    print('K_T[GPa]:',system.bulkModulus*1e-9)
     print('\nVan der Waals EOS') #-----------------------------------------------
-    system.ThermodynamicState(eos='VdW', P=P_0, T=T_0)
+    system.ThermodynamicState(eos='VdW', P=P_0, T=T_0, P_sat=Psat)
+    print('Psat[Pa]:',system.P_sat)
     print('P[Pa]:',P_0)
     print('phi:',system.phi)
     print('Mu[kJ/mol]:',system.mu*1e-3)
+    print('Z:',system.zFactor)
     print('Dmolar[mol/m^3]:',system.Dmolar)
     print('phase:',system.phase)
     print('\nJohnson EOS') #-----------------------------------------------------
-    system.ThermodynamicState(eos='Johnson', P=P_0, T=T_0)
+    system.ThermodynamicState(eos='Johnson', P=P_0, T=T_0, P_sat=Psat)
+    print('Psat[Pa]:',system.P_sat)
     print('P[Pa]:',P_0)
     print('phi:',system.phi)
     print('Mu[kJ/mol]:',system.mu*1e-3)
+    print('Z:',system.zFactor)
     print('Dmolar[mol/m^3]:',system.Dmolar)
     print('phase:',system.phase)
+    print('K_T[GPa]:',system.bulkModulus*1e-9)
     print('\nIdeal Gas EOS') #---------------------------------------------------
-    system.ThermodynamicState(eos='Ideal', T=T_0, P=P_0)
+    system.ThermodynamicState(eos='Ideal', T=T_0, P=P_0, P_sat=Psat)
+    print('Psat[Pa]:',system.P_sat)
     print('P[Pa]:',P_0)
     print('phi:',system.phi)
     print('Mu[kJ/mol]:',system.mu*1e-3)
+    print('Z:',system.zFactor)
+    print('Dmolar[mol/m^3]:',system.Dmolar)
     print('phase:',system.phase)
+    print('K_T[GPa]:',system.bulkModulus*1e-9)
