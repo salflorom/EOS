@@ -4,28 +4,56 @@
 #   Available EOS: 
 #   - Peng-Robinson
 #   - Soave (Soave-Redlich-Kwong)
-#   - Ideal
+#   - Ideal (Ideal gas)
+#   - Johnson (Lennard-Jones) 
+#   - VdW (Van der Waals) 
 #
 #   Available properties: phi (fugacity coefficient), fugacity, mu (chemical potential), 
 #       idealMu (ideal part of mu), excessMu (excess part of mu), phase (liquid or vapour),
 #       mass (fluid's mass), molarMass (fluid's molar mass), Pc (critical pressure),
 #       Tc (critical temperature), omega (acentric factor), P (system's pressure),
-#       T (system's temperature), Dmolar (system's molar density).
+#       T (system's temperature), Dmolar (system's molar density), P_sat (saturation pressure),
+#       bulkModulus (bulk modulus or reciprocal of isothermal compressibility),
+#       zFactor (compressibility factor), phase (fluid's phase).
 #       
-#   Note: The script uses the following units: kg, kg/mol, m, J/mol, K (only for T, and Tc), Pa.
+#   Note 1: The script uses the following units: kg, kg/mol, m, J/mol, K (only for T, and Tc), Pa.
+#   Note 2: As the EOSs implemented don't predict exactly the saturation pressure, the user can
+#       input this value when calling ThermodynamicState. See Example 1.
 #
 # Instructions: 
 #   1.- Import the script.
 #       Example: import EOS
 #   2.- Create the fluid.
-#       Example: benzene = EOS.EOS(Tc,Pc,omega,molarMass)
+#       Example 1:
+#           Tcrit = critical_temperature #K
+#           Pcrit = critical_pressure #Pa
+#           w = acentric_factor
+#           mM = molar_mass #kg/mol
+#           benzene = EOS.EOS(Tc=Tcrit, Pc=Pcrit, omega=w, molarMass=mM)
+#       Example 2: 
+#           eps = epsilon #K
+#           sig = sigma #m
+#           mM = molar_mass #kg/mol
+#       benzene = EOS.EOS(epsilon=eps, sigma=sig, molarMass=mM)
 #   3.- Call ThermodynamicState.
-#       Example: benzene.ThermodynamicState(eos='Peng-Robinson',P=0.0136e6,T=298)
-#                benzene.ThermodynamicState(eos='Peng-Robinson',T=300,Dmolar=...)
-#   4.- Call any fluid's property.
+#       Example 1: 
+#           benzene.ThermodynamicState(eos='Peng-Robinson', P=0.0136e6, T=298)
+#           benzene.ThermodynamicState(eos='Ideal Gas', T=300, Dmolar=...)
+#           benzene.ThermodynamicState(eos='Soave', P=300, Dmolar=...)
+#           benzene.ThermodynamicState(eos='VdW', P=1e5, T=..., P_sat=101235)
+#       Example 2:
+#           benzene.ThermodynamicState(eos='Johnson',P=1e5,T=...)
+#   4.- Call any fluid's properties.
 #       Example: print(benzene.phi)
-#                print(benzene.fugacity)
-#                print(benzene.mu)
+#                print(benzene.fugacity) #Pa
+#                print(benzene.mu) #J/mol
+#                print(benzene.P_sat) #Pa
+#                print(benzene.Dmolar) #kg/mol
+#                print(benzene.P) #Pa
+#                print(benzene.T) #K
+#                print(benzene.bulkModulus) #Pa
+#                print(benzene.zFactor)
+#                print(benzene.phase)
 #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
@@ -117,7 +145,7 @@ class EOS():
         self.phi = phi
 
     def FindSaturationPressure(self):
-        # Check how to calculate Psat for Johnson EOS!
+        pSat = self.P_sat #Initially, it's zero.
         eos = self.eos
         if eos == 'Peng-Robinson': self.PengRobinsonEOS()
         elif eos == 'VdW': self.VdWEOS()
@@ -126,27 +154,136 @@ class EOS():
         elif eos == 'Johnson': self.JohnsonEOS()
         self.ZFactors()
         self.Phi()
-        targetP, pSat = self.state['P'], self.P_sat #Pa, Pa
-        tolerance = 1e-2
-        for trialP in np.linspace(1e-5,1e9,int(1e7)):
-            self.state['P'] = trialP #Pa
-            if eos == 'Peng-Robinson': self.PengRobinsonEOS()
-            elif eos == 'VdW': self.VdWEOS()
-            elif eos == 'Soave': self.SoaveEOS()
-            elif eos == 'Ideal': self.IdealEOS()
-            elif eos == 'Johnson': self.JohnsonEOS()
-            self.ZFactors()
-            self.Phi()
-            phi = self.phi
-            if (len(phi) == 1): 
-                print('Waring: Unable to find saturation pressure. Try using a lower temperature.')
-                pSat = 0
-                break
-            if (abs(phi[0]-phi[-1]) < tolerance): 
-                pSat = trialP #Pa
-                break
+        if eos == 'Johnson':
+            # This piece of code was developed by Maximov, Max.
+            def P_LJ(Rho):
+                epsilon = self.epsilon #K
+                aCoeff, bCoeff, cCoeff, dCoeff = self.aCoeff, self.bCoeff, self.cCoeff, self.dCoeff
+                xCoeff, rcut, gamma = self.xCoeff, self.rcut, self.gamma
+                T = self.state['T']/epsilon
+                fExp = np.exp(-gamma*Rho**2)
+                sum8, sum6 = 0, 0
+                for i in range(1,9): sum8 += aCoeff[i]*Rho**(i+1)
+                for i in range(1,7): sum6 += bCoeff[i]*Rho**(2*i+1)
+                pFull = Rho*T+sum8+fExp*sum6
+                pTail = 32/9 * np.pi*Rho**2 * ((1/rcut)**9-3/2*(1/rcut)**3)
+                P = pFull-pTail
+                return P
+            def Helmholtz(Rho):
+                aCoeff, bCoeff, gCoeff = self.aCoeff, self.bCoeff, self.gCoeff
+                rcut, gamma = self.rcut, self.gamma
+                fExp = np.exp(-gamma*Rho**2)
+                gCoeff = [0] * 7
+                gCoeff[1] = (1-fExp)/(2*gamma)
+                gCoeff[2] = -(fExp*Rho**2 - 2*gCoeff[1])/(2*gamma)
+                gCoeff[3] = -(fExp*Rho**4 - 4*gCoeff[2])/(2*gamma)
+                gCoeff[4] = -(fExp*Rho**6 - 6*gCoeff[3])/(2*gamma)
+                gCoeff[5] = -(fExp*Rho**8 - 8*gCoeff[4])/(2*gamma)
+                gCoeff[6] = -(fExp*Rho**10 - 10*gCoeff[5])/(2*gamma)
+                sum8, sum6 = 0, 0
+                for i in range(1,9): sum8 += aCoeff[i]*Rho**i/i
+                for i in range(1,7): sum6 += bCoeff[i]*gCoeff[i]
+                helmholtzFull = sum8+sum6
+                helmholtzTail = 32/9 * np.pi * Rho * ((1/rcut)**9 - 3/2*(1/rcut)**3)
+                helmholtz = helmholtzFull-helmholtzTail
+                return helmholtz
+            def Mu_LJ(Rho):
+                epsilon = self.epsilon #K
+                sigma = self.sigma #m
+                mass = self.mass #kg
+                helmholtz = Helmholtz(Rho)
+                T = self.state['T']/epsilon
+                P = P_LJ(Rho)
+                thermalWL = planck/np.sqrt(2*np.pi*mass*kb*T) #m
+                thermalWL /= sigma
+                idMu = T*np.log(Rho*thermalWL**3)
+                exMu = helmholtz+P/Rho-T
+                return idMu+exMu
+            def logspace(start, stop, num):
+                log10 = np.log(10.0)
+                delta_dens = (np.log(stop) - np.log(start)) / (num - 1) / log10
+                return np.array([pow(10.0, np.log(start) / log10 + delta_dens * (i - 1)) for i in range(num)])
+            def gas_spinodal_point(mu, rho):
+                inflection_idx = np.argwhere(np.diff(mu(rho)) < 0)
+                if len(inflection_idx) == 0:
+                    raise ValueError("No spinodal points. Check your input parameters "\
+                                      "or give a saturation pressure among your input parameters.")
+                return rho[inflection_idx[0]][0]
+            def liq_spinodal_point(mu, rho):
+                rho_inv = rho[::-1]
+                inflection_idx = np.argwhere(np.diff(mu(rho_inv)) > 0)
+                if len(inflection_idx) == 0:
+                    raise ValueError("No spinodal points. Check your input parameters.")
+                return rho_inv[inflection_idx[0]][0]
+            epsilon = self.epsilon #K
+            sigma = self.sigma #m
+            rho = np.linspace(1e-4,0.9,16000)
+            gas_spinodal_rho = gas_spinodal_point(Mu_LJ, rho)
+            liq_spinodal_rho = liq_spinodal_point(Mu_LJ, rho)
+            min_rho = rho[0]
+            max_rho = rho[-1]
+            for i_pass in range(1, 3):
+                n_points = n_gas_points = n_liq_points = n_interp = len(rho)
+                # we divide the gas branch logarithmically and the liquid branch linearly
+                if i_pass == 1: gas_rho = logspace(rho[0], gas_spinodal_rho, n_gas_points)
+                else: gas_rho = np.linspace(rho[0], gas_spinodal_rho, n_gas_points)
+                gas_mu = Mu_LJ(gas_rho)
+                gas_p = P_LJ(gas_rho)
+                # calculate chem.potential on the liquid branch
+                liq_rho = np.linspace(liq_spinodal_rho, max_rho, n_liq_points)
+                liq_mu = Mu_LJ(liq_rho)
+                liq_p = P_LJ(liq_rho)
+                # Determination of mu0, p0, satur_liq_dens and satur_gas_dens
+                # here we consider ONLY 2-phase region, between mu_liq[0] and mu_gas[-1]
+                interp_mu = np.linspace(liq_mu[0], gas_mu[-1], n_interp)
+                gas_interp_p = np.interp(interp_mu, gas_mu, gas_p)
+                liq_interp_p = np.interp(interp_mu, liq_mu, liq_p)
+                gas_interp_rho = np.interp(interp_mu, gas_mu, gas_rho)
+                liq_interp_rho = np.interp(interp_mu, liq_mu, liq_rho)
+                # Solving p_gas_spl[mu] - p_liq_spl[mu] = 0
+                i = np.argwhere(gas_interp_p - liq_interp_p < 0)[0]
+                p_diff = gas_interp_p[i] - liq_interp_p[i]
+                prev_dens = gas_interp_p[i - 1] - liq_interp_p[i - 1]
+                if p_diff < 0 and prev_dens > 0:
+                    i_eq = i if (abs(p_diff) < abs(prev_dens)) else i - 1
+                    i_eq = i_eq[0]
+                    muSat = interp_mu[i_eq]
+                    dens = np.linspace(min_rho, max_rho, n_points)
+                    mu0_intersection_i = np.argwhere(np.diff(np.sign(Mu_LJ(dens) - muSat)) != 0)
+
+                    rho0 = dens[mu0_intersection_i[1]]
+                    densities = [gas_interp_rho[i_eq], rho0, liq_interp_rho[i_eq]],
+                    pSat = liq_interp_p[i_eq]
+
+                    min_rho = gas_interp_rho[i_eq - n_points // 300]
+                    max_rho = liq_interp_rho[i_eq + n_points // 300]
+                    gas_spinodal_rho = gas_interp_rho[i_eq + n_points // 300]
+                    liq_spinodal_rho = liq_interp_rho[i_eq - n_points // 300]
+                else:
+                    raise ValueError("Unable to find vapor-liquid equilibrium on the %d pass." % i_pass)
+            pSat *= kb*epsilon/sigma**3 #Pa
+        else:
+            targetP, pSat = self.state['P'], self.P_sat #Pa, Pa
+            tolerance = 1e-2
+            for trialP in np.linspace(1e-5,1e9,int(1e7)):
+                self.state['P'] = trialP #Pa
+                if eos == 'Peng-Robinson': self.PengRobinsonEOS()
+                elif eos == 'VdW': self.VdWEOS()
+                elif eos == 'Soave': self.SoaveEOS()
+                elif eos == 'Ideal': self.IdealEOS()
+                elif eos == 'Johnson': self.JohnsonEOS()
+                self.ZFactors()
+                self.Phi()
+                phi = self.phi
+                if (len(phi) == 1): 
+                    print('Waring: Unable to find saturation pressure.\n'\
+                          '\tTry using a lower temperature.')
+                    pSat = trialP
+                    break
+                if (abs(phi[0]-phi[-1]) < tolerance): 
+                    pSat = trialP; break #Pa
+            self.state['P'] = targetP #Pa
         self.P_sat = pSat #Pa
-        self.state['P'] = targetP #Pa
 
     def Phase(self):
         zFactor = self.zFactor
@@ -374,22 +511,43 @@ class EOS():
             self.fExp = fExp
             self.aCoeff, self.bCoeff, self.cCoeff, self.dCoeff = aCoeff, bCoeff, cCoeff, dCoeff
             return P
+        def Helmholtz(Rho):
+            aCoeff, bCoeff, gCoeff = self.aCoeff, self.bCoeff, self.gCoeff
+            rcut, gamma = self.rcut, self.gamma
+            fExp = np.exp(-gamma*Rho**2)
+            gCoeff[1] = (1-fExp)/(2*gamma)
+            gCoeff[2] = -(fExp*Rho**2 - 2*gCoeff[1])/(2*gamma)
+            gCoeff[3] = -(fExp*Rho**4 - 4*gCoeff[2])/(2*gamma)
+            gCoeff[4] = -(fExp*Rho**6 - 6*gCoeff[3])/(2*gamma)
+            gCoeff[5] = -(fExp*Rho**8 - 8*gCoeff[4])/(2*gamma)
+            gCoeff[6] = -(fExp*Rho**10 - 10*gCoeff[5])/(2*gamma)
+            sum8, sum6 = 0, 0
+            for i in range(1,9): sum8 += aCoeff[i]*Rho**i/i
+            for i in range(1,7): sum6 += bCoeff[i]*gCoeff[i]
+            helmholtzFull = sum8+sum6
+            helmholtzTail = 32/9 * np.pi * Rho * ((1/rcut)**9 - 3/2*(1/rcut)**3)
+            helmholtz = helmholtzFull-helmholtzTail
+            self.gCoeff = gCoeff
+            return helmholtz
         state = self.state
         state = self.state
         epsilon = self.epsilon #K
         sigma = self.sigma #m
         Rhoc, Tc, Pc = 0.310, 1.313, 0.13 #K, Pa
         T, rho, P = 0, 0, 0
+        roots, helmholtz = [], []
         if not 'P' in state.keys():
             T = state['T']/epsilon
             rho = state['Dmolar']*avogadro*sigma**3
             P = EOSTRho(T,rho)
             state['P'] = P*kb*epsilon/sigma**3 #Pa
+            roots.append(rho)
         elif not 'T' in state.keys():
             P = state['P']*sigma**3/(kb*epsilon)
             rho = state['Dmolar']*avogadro*sigma**3
             T = root(EOSTRho,x0=1,args=(rho,P)).x[0]
             state['T'] = T*epsilon #K
+            roots.append(rho)
         else:
             def EOSRhoT(Rho,T,P0=0):
                 aCoeff, bCoeff, cCoeff, dCoeff = self.aCoeff, self.bCoeff, self.cCoeff, self.dCoeff
@@ -419,42 +577,18 @@ class EOS():
                 P = pFull-pTail-P0
                 self.aCoeff, self.bCoeff, self.cCoeff, self.dCoeff = aCoeff, bCoeff, cCoeff, dCoeff
                 return P
-            def Helmholtz(Rho):
-                aCoeff, bCoeff, gCoeff = self.aCoeff, self.bCoeff, self.gCoeff
-                rcut, gamma = self.rcut, self.gamma
-                fExp = np.exp(-gamma*Rho**2)
-                gCoeff[1] = (1-fExp)/(2*gamma)
-                gCoeff[2] = -(fExp*Rho**2 - 2*gCoeff[1])/(2*gamma)
-                gCoeff[3] = -(fExp*Rho**4 - 4*gCoeff[2])/(2*gamma)
-                gCoeff[4] = -(fExp*Rho**6 - 6*gCoeff[3])/(2*gamma)
-                gCoeff[5] = -(fExp*Rho**8 - 8*gCoeff[4])/(2*gamma)
-                gCoeff[6] = -(fExp*Rho**10 - 10*gCoeff[5])/(2*gamma)
-                sum8, sum6 = 0, 0
-                for i in range(1,9): sum8 += aCoeff[i]*Rho**i/i
-                for i in range(1,7): sum6 += bCoeff[i]*gCoeff[i]
-                helmholtzFull = sum8+sum6
-                helmholtzTail = 32/9 * np.pi * Rho * ((1/rcut)**9 - 3/2*(1/rcut)**3)
-                helmholtz = helmholtzFull-helmholtzTail
-                self.gCoeff = gCoeff
-                return helmholtz
             state = self.state
             epsilon, sigma = self.epsilon, self.sigma #K, m
             P, T = state['P']*sigma**3/(kb*epsilon), state['T']/epsilon
-            helmholtz, roots = [], []
             linspace = np.linspace(0,1,10,endpoint=False)
             for i in range(len(linspace)): #Check!
                 findRoots = root(EOSRhoT,x0=linspace[i],args=(T,P))
                 if findRoots.success:
                     roots.append(round(findRoots.x[0],9))
-            #-------------------------------------------------------------
-            # findRoots = root(EOSRhoT,x0=0,args=(T,P))
-            # if not findRoots.success: findRoots = root(EOSRhoT,x0=1,args=(T,P))
-            # roots.append(findRoots.x[0])
-            #-------------------------------------------------------------
             roots = np.unique(np.array(roots))
-            for i in roots: helmholtz.append(Helmholtz(i))
-            self.helmholtz = np.sort(helmholtz)
-            self.rho = roots
+        for i in roots: helmholtz.append(Helmholtz(i))
+        self.helmholtz = np.sort(helmholtz)
+        self.rho = np.array(roots)
         Tc *= epsilon #K
         Pc *= kb*epsilon/sigma**3 #Pa
         self.Tc, self.Pc = Tc, Pc
@@ -550,37 +684,36 @@ def Help():
 ################################################################################
 if __name__ == '__main__':
     from CoolProp.CoolProp import PropsSI, PhaseSI
-    # Argon
+    molName = 'Argon'
     T_0 = 87.3 #K
-    P_0 = 0.5*PropsSI('P','T',T_0,'Q',1,'Argon') #Pa. At T_0 = 119.6 K. Saturation pressure.
-    Dm_0 = PropsSI('Dmolar','T',T_0,'P',P_0,'Argon') #kg/mol. At T_0 = 119.6 K.
-    Psat = PropsSI('P','T',T_0,'Q',1,'Argon')
-    Pc = PropsSI('Pcrit','Argon') #Pa
-    Tc = PropsSI('Tcrit','Argon') #K
+    P_0 = 2*PropsSI('P','T',T_0,'Q',1,molName) #Pa. At T_0 = 119.6 K. Saturation pressure.
+    Dm_0 = PropsSI('Dmolar','T',T_0,'P',P_0,molName) #kg/mol. At T_0 = 119.6 K.
+    Psat = PropsSI('P','T',T_0,'Q',1,molName)
+    Pc = PropsSI('Pcrit',molName) #Pa
+    Tc = PropsSI('Tcrit',molName) #K
+    omega = PropsSI('acentric',molName)
     Mm = 39.948e-3 #kg/mol
     epsilon = 119.6 #K
     sigma = 0.34e-9 #m
-    print('CoolProp') #----------------------------------------------------------
-    print('Psat[Pa]:',Psat) 
-    print('P[Pa]:',PropsSI('P','T',T_0,'P',P_0,'Argon'))
-    print('Z:',PropsSI('Z','T',T_0,'P',P_0,'Argon'))
-    print('Dmolar[mol/m^3]:',PropsSI('Dmolar','T',T_0,'P',P_0,'Argon'))
-    print('phase:',PhaseSI('T',T_0,'P',P_0,'Argon'))
-    print('K_T[GPa]:',1e-9/PropsSI('ISOTHERMAL_COMPRESSIBILITY','T',T_0,'P',P_0,'Argon'))
-    system = EOS(Pc=Pc, Tc=Tc, epsilon=epsilon, sigma=sigma, molarMass=Mm)
-    print('\nSoave EOS') #-------------------------------------------------------
-    system.ThermodynamicState(eos='Soave', T=T_0, P=P_0, P_sat=Psat)
-    print('Psat[Pa]:',system.P_sat)
     print('P[Pa]:',P_0)
+    print('\nCoolProp') #----------------------------------------------------------
+    print('Psat[Pa]:',Psat) 
+    print('Z:',PropsSI('Z','T',T_0,'P',P_0,molName))
+    print('Dmolar[mol/m^3]:',PropsSI('Dmolar','T',T_0,'P',P_0,molName))
+    print('phase:',PhaseSI('T',T_0,'P',P_0,molName))
+    print('K_T[GPa]:',1e-9/PropsSI('ISOTHERMAL_COMPRESSIBILITY','T',T_0,'P',P_0,molName))
+    system = EOS(Pc=Pc, Tc=Tc, omega=omega, epsilon=epsilon, sigma=sigma, molarMass=Mm)
+    print('\nSoave EOS') #-------------------------------------------------------
+    system.ThermodynamicState(eos='Soave', T=T_0, P=P_0)
+    print('Psat[Pa]:',system.P_sat)
     print('phi:',system.phi)
     print('Mu[kJ/mol]:',system.mu*1e-3)
     print('Z:',system.zFactor)
     print('Dmolar[mol/m^3]:',system.Dmolar)
     print('phase:',system.phase)
     print('\nPeng-Robinson EOS') #-----------------------------------------------
-    system.ThermodynamicState(eos='Peng-Robinson', T=T_0, P=P_0, P_sat=Psat)
+    system.ThermodynamicState(eos='Peng-Robinson', T=T_0, P=P_0)
     print('Psat[Pa]:',system.P_sat)
-    print('P[Pa]:',P_0)
     print('phi:',system.phi)
     print('Mu[kJ/mol]:',system.mu*1e-3)
     print('Z:',system.zFactor)
@@ -590,16 +723,14 @@ if __name__ == '__main__':
     print('\nVan der Waals EOS') #-----------------------------------------------
     system.ThermodynamicState(eos='VdW', P=P_0, T=T_0, P_sat=Psat)
     print('Psat[Pa]:',system.P_sat)
-    print('P[Pa]:',P_0)
     print('phi:',system.phi)
     print('Mu[kJ/mol]:',system.mu*1e-3)
     print('Z:',system.zFactor)
     print('Dmolar[mol/m^3]:',system.Dmolar)
     print('phase:',system.phase)
     print('\nJohnson EOS') #-----------------------------------------------------
-    system.ThermodynamicState(eos='Johnson', P=P_0, T=T_0, P_sat=Psat)
+    system.ThermodynamicState(eos='Johnson', P=P_0, T=T_0)
     print('Psat[Pa]:',system.P_sat)
-    print('P[Pa]:',P_0)
     print('phi:',system.phi)
     print('Mu[kJ/mol]:',system.mu*1e-3)
     print('Z:',system.zFactor)
@@ -609,7 +740,6 @@ if __name__ == '__main__':
     print('\nIdeal Gas EOS') #---------------------------------------------------
     system.ThermodynamicState(eos='Ideal', T=T_0, P=P_0, P_sat=Psat)
     print('Psat[Pa]:',system.P_sat)
-    print('P[Pa]:',P_0)
     print('phi:',system.phi)
     print('Mu[kJ/mol]:',system.mu*1e-3)
     print('Z:',system.zFactor)
