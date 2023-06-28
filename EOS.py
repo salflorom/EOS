@@ -1,26 +1,26 @@
 # Author: Santiago A. Flores Roman
 #
 # Description: It computes the fluid's properties according to a given EOS.
-#   Available EOS: 
+#   Available EOS:
 #   - Peng-Robinson
 #   - Soave (Soave-Redlich-Kwong)
 #   - Ideal (Ideal gas)
-#   - Johnson (Lennard-Jones) 
-#   - VdW (Van der Waals) 
+#   - Johnson (Lennard-Jones)
+#   - VdW (Van der Waals)
 #
-#   Available properties: phi (fugacity coefficient), fugacity, mu (chemical potential), 
+#   Available properties: phi (fugacity coefficient), fugacity, mu (chemical potential),
 #       idealMu (ideal part of mu), excessMu (excess part of mu), phase (liquid or vapour),
 #       mass (fluid's mass), molarMass (fluid's molar mass), Pc (critical pressure),
 #       Tc (critical temperature), omega (acentric factor), P (system's pressure),
 #       T (system's temperature), Dmolar (system's molar density), P_sat (saturation pressure),
 #       bulkModulus (bulk modulus or reciprocal of isothermal compressibility),
 #       zFactor (compressibility factor), roots (solutions of EOS [fluid's densities]).
-#       
+#
 #   Note 1: The script uses the following units: kg, kg/mol, m, J/mol, K (only for T, and Tc), Pa.
 #   Note 2: As the EOSs implemented don't predict exactly the saturation pressure, the user can
 #       input this value when calling ThermodynamicState. See Example 1.
 #
-# Instructions: 
+# Instructions:
 #   1.- Import the script.
 #       Example: import EOS
 #   2.- Create the fluid.
@@ -30,13 +30,13 @@
 #           w = acentric_factor
 #           mM = molar_mass #kg/mol
 #           benzene = EOS.EOS(Tc=Tcrit, Pc=Pcrit, omega=w, molarMass=mM)
-#       Example 2: 
+#       Example 2:
 #           eps = epsilon #K
 #           sig = sigma #m
 #           mM = molar_mass #kg/mol
 #       benzene = EOS.EOS(epsilon=eps, sigma=sig, molarMass=mM)
 #   3.- Call ThermodynamicState.
-#       Example 1: 
+#       Example 1:
 #           benzene.ThermodynamicState(eos='Peng-Robinson', P=0.0136e6, T=298)
 #           benzene.ThermodynamicState(eos='Ideal Gas', T=300, Dmolar=...)
 #           benzene.ThermodynamicState(eos='Soave', P=300, Dmolar=...)
@@ -58,13 +58,12 @@
 #                print(benzene.zFactor)
 #                print(benzene.phase)
 #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 import scipy.constants as const
 from scipy.optimize import root
 import numpy as np
 from numpy.polynomial import Polynomial
-from sys import exit
 
 Rg = const.R
 kb = const.Boltzmann
@@ -91,13 +90,13 @@ class EOS():
         self.gamma, self.rcut = 3, 5
         self.aCoeff, self.bCoeff, self.cCoeff = np.zeros(9), np.zeros(7), np.zeros(9)
         self.dCoeff, self.gCoeff = np.zeros(7), np.zeros(7)
-        self.xCoeff = [0.0, 0.8623085097507421, 2.976218765822098, -8.402230115796038, 
-                       0.1054136629203555, -0.8564583828174598, 1.582759470107601, 
-                       0.7639421948305453, 1.753173414312048, 2.798291772190376e3, 
-                       -4.8394220260857657e-2, 0.9963265197721935, -3.698000291272493e1, 
-                       2.084012299434647e1, 8.305402124717285e1, -9.574799715203068e2, 
-                       -1.477746229234994e2, 6.398607852471505e1, 1.603993673294834e1, 
-                       6.805916615864377e1, -2.791293578795945e3, -6.245128304568454, 
+        self.xCoeff = [0.0, 0.8623085097507421, 2.976218765822098, -8.402230115796038,
+                       0.1054136629203555, -0.8564583828174598, 1.582759470107601,
+                       0.7639421948305453, 1.753173414312048, 2.798291772190376e3,
+                       -4.8394220260857657e-2, 0.9963265197721935, -3.698000291272493e1,
+                       2.084012299434647e1, 8.305402124717285e1, -9.574799715203068e2,
+                       -1.477746229234994e2, 6.398607852471505e1, 1.603993673294834e1,
+                       6.805916615864377e1, -2.791293578795945e3, -6.245128304568454,
                        -8.116836104958410e3, 1.488735559561229e1, -1.059346754655084e4,
                        -1.131607632802822e2, -8.867771540418822e3, -3.986982844450543e1,
                        -4.689270299917261e3, 2.593535277438717e2, -2.694523589434903e3,
@@ -122,7 +121,6 @@ class EOS():
     def Phi(self):
         eos = self.eos
         zFactor = self.zFactor
-        molarMass = self.molarMass #kg/mol
         bUpp = self.bUpp
         aUpp = self.aUpp
         sqrt2 = np.sqrt(2)
@@ -133,7 +131,7 @@ class EOS():
         elif eos == 'Soave':
             np.seterr(invalid='ignore')
             phi = np.exp((zFactor-1)-np.log(zFactor-bUpp)-aUpp*np.log(1+bUpp/zFactor)/bUpp)
-        elif eos == 'VdW': 
+        elif eos == 'VdW':
             np.seterr(invalid='ignore')
             phi = np.exp(bUpp/(zFactor-bUpp)-2*aUpp/zFactor-np.log(1-aUpp*(zFactor-bUpp)/zFactor**2)) #Check!
         elif eos == 'Ideal': phi = zFactor
@@ -149,8 +147,9 @@ class EOS():
         self.phi = phi
 
     def FindSaturationPressure(self):
-        pSat = self.P_sat #Initially, it's zero.
+        pSat = self.P_sat #Initially, pSat=1e-5. If pSat=0, then pSat is not computed.
         eos = self.eos
+        if pSat == 0: return
         if eos == 'Peng-Robinson': self.PengRobinsonEOS()
         elif eos == 'VdW': self.VdWEOS()
         elif eos == 'Soave': self.SoaveEOS()
@@ -162,8 +161,8 @@ class EOS():
             # This piece of code was developed by Maximov, Max.
             def P_LJ(Rho):
                 epsilon = self.epsilon #K
-                aCoeff, bCoeff, cCoeff, dCoeff = self.aCoeff, self.bCoeff, self.cCoeff, self.dCoeff
-                xCoeff, rcut, gamma = self.xCoeff, self.rcut, self.gamma
+                aCoeff, bCoeff = self.aCoeff, self.bCoeff
+                rcut, gamma = self.rcut, self.gamma
                 T = self.state['T']/epsilon
                 fExp = np.exp(-gamma*Rho**2)
                 sum8, sum6 = 0, 0
@@ -212,19 +211,23 @@ class EOS():
                 if len(inflection_idx) == 0:
                     raise ValueError("No spinodal points. Check your input parameters "\
                                       "or give a saturation pressure among your input parameters.")
+                    pSat = 0
+                    self.pSat = pSat
                 return rho[inflection_idx[0]][0]
             def liq_spinodal_point(mu, rho):
                 rho_inv = rho[::-1]
                 inflection_idx = np.argwhere(np.diff(mu(rho_inv)) > 0)
                 if len(inflection_idx) == 0:
                     raise ValueError("No spinodal points. Check your input parameters.")
+                    pSat = 0
+                    self.pSat = pSat
                 return rho_inv[inflection_idx[0]][0]
             epsilon = self.epsilon #K
             sigma = self.sigma #m
             rho = np.linspace(1e-4,0.9,16000)
             gas_spinodal_rho = gas_spinodal_point(Mu_LJ, rho)
             liq_spinodal_rho = liq_spinodal_point(Mu_LJ, rho)
-            min_rho = rho[0]
+            # min_rho = rho[0]
             max_rho = rho[-1]
             for i_pass in range(1, 3):
                 n_points = n_gas_points = n_liq_points = n_interp = len(rho)
@@ -251,20 +254,21 @@ class EOS():
                 if p_diff < 0 and prev_dens > 0:
                     i_eq = i if (abs(p_diff) < abs(prev_dens)) else i - 1
                     i_eq = i_eq[0]
-                    muSat = interp_mu[i_eq]
-                    dens = np.linspace(min_rho, max_rho, n_points)
-                    mu0_intersection_i = np.argwhere(np.diff(np.sign(Mu_LJ(dens) - muSat)) != 0)
+                    # muSat = interp_mu[i_eq]
+                    # dens = np.linspace(min_rho, max_rho, n_points)
+                    # mu0_intersection_i = np.argwhere(np.diff(np.sign(Mu_LJ(dens) - muSat)) != 0)
 
-                    rho0 = dens[mu0_intersection_i[1]]
-                    densities = [gas_interp_rho[i_eq], rho0, liq_interp_rho[i_eq]],
+                    # rho0 = dens[mu0_intersection_i[1]]
+                    # densities = [gas_interp_rho[i_eq], rho0, liq_interp_rho[i_eq]],
                     pSat = liq_interp_p[i_eq]
 
-                    min_rho = gas_interp_rho[i_eq - n_points // 300]
+                    # min_rho = gas_interp_rho[i_eq - n_points // 300]
                     max_rho = liq_interp_rho[i_eq + n_points // 300]
                     gas_spinodal_rho = gas_interp_rho[i_eq + n_points // 300]
                     liq_spinodal_rho = liq_interp_rho[i_eq - n_points // 300]
                 else:
                     raise ValueError("Unable to find vapor-liquid equilibrium on the %d pass." % i_pass)
+                    pSat = 0
             pSat *= kb*epsilon/sigma**3 #Pa
         else:
             targetP, pSat = self.state['P'], self.P_sat #Pa, Pa
@@ -279,12 +283,12 @@ class EOS():
                 self.ZFactors()
                 self.Phi()
                 phi = self.phi
-                if (len(phi) == 1): 
-                    print('Waring: Unable to find saturation pressure.\n'\
+                if (len(phi) == 1):
+                    print('Warning: Unable to find saturation pressure.\n'\
                           '\tTry using a lower temperature.')
-                    pSat = trialP
+                    pSat = 0
                     break
-                if (abs(phi[0]-phi[-1]) < tolerance): 
+                if (abs(phi[0]-phi[-1]) < tolerance):
                     pSat = trialP; break #Pa
             self.state['P'] = targetP #Pa
         self.P_sat = pSat #Pa
@@ -295,30 +299,29 @@ class EOS():
         state = self.state
         Tc = self.Tc
         Pc = self.Pc
-        eos = self.eos
         T, P, pSat = state['T'], state['P'], self.P_sat #K, Pa, Pa
         roots = P/(zFactor*Rg*T) #mol/m^3
         if pSat != 0:
-            if (len(zFactor) == 1) or (zFactor[0] <= 0): 
+            if (len(zFactor) == 1) or (zFactor[0] <= 0):
                 phi = phi[-1]
                 zFactor = zFactor[-1]
                 if (T > Tc) and (P > Pc): phase = 'super_critical_fluid'
                 elif (T < Tc) and (P < Pc): phase = 'Vapour'
                 elif (T < Tc) and (P > Pc): phase =  'Liquid'
             else:
-                if P < pSat: #if phi[0] > phi[-1]: 
+                if P < pSat: #if phi[0] > phi[-1]:
                     phi, zFactor = phi[-1], zFactor[-1]
                     phase = 'Vapour (stable) - Liquid (metastable)'
                 # Vapour (metastable), liquid (stable)
-                elif P > pSat: #elif phi[0] < phi[-1]: 
+                elif P > pSat: #elif phi[0] < phi[-1]:
                     phi, zFactor = phi[0], zFactor[0]
                     phase = 'Vapour (metastable) - Liquid (stable)'
                 # Vapour (stable), liquid (stable)
-                else: 
+                else:
                     phi, zFactor = phi[0], zFactor[0]
                     phase = 'Vapour (stable) - Liquid (stable)'
         else: phase = 'Unpredicted'
-        if not 'Dmolar' in state.keys(): 
+        if not 'Dmolar' in state.keys():
             rhoMolar = P/(zFactor*Rg*T) #mol/m^3
             state['Dmolar'] = rhoMolar
         rhoN = P/(zFactor*kb*T) #m^-3
@@ -347,7 +350,7 @@ class EOS():
         self.fugacity = fugacity #Pa
 
     def PengRobinsonEOS(self):
-        def EOSTV(T,V,P0,ac,kappa,b): 
+        def EOSTV(T,V,P0,ac,kappa,b):
             Tc = self.Tc
             alpha = (1+kappa*(1-np.sqrt(T/Tc)))**2
             a = ac*alpha
@@ -388,7 +391,7 @@ class EOS():
         self.state = state
 
     def VdWEOS(self):
-        def EOSTV(T,V,P0,a,b): 
+        def EOSTV(T,V,P0,a,b):
             P = Rg*T/(V-b)-a/V**2-P0
             return P
         state = self.state
@@ -419,7 +422,7 @@ class EOS():
         self.state = state
 
     def SoaveEOS(self):
-        def EOSTV(T,V,P0,ac,kappa,b): 
+        def EOSTV(T,V,P0,ac,kappa,b):
             Tc = self.Tc
             alpha = (1.0+kappa*(1.0-np.sqrt(T/Tc)))**2
             a = ac*alpha
@@ -460,7 +463,7 @@ class EOS():
         self.state = state
 
     def IdealEOS(self):
-        def EOSTV(T,V,P0): 
+        def EOSTV(T,V,P0):
             P = Rg*T/V-P0
             return P
         state = self.state
@@ -482,8 +485,8 @@ class EOS():
         self.coeffs = coeffs
         self.state = state
 
-    # Information about the EOS: 
-    # Johnson, J. K., Zollweg, J. A., & Gubbins, K. E. (1993). 
+    # Information about the EOS:
+    # Johnson, J. K., Zollweg, J. A., & Gubbins, K. E. (1993).
     # The Lennard-Jones equation of state revisited. Molecular Physics, 78(3), 591-618.
     #
     # All the expressions in this EOS must be manipulated in reduced units.
@@ -539,7 +542,7 @@ class EOS():
         state = self.state
         epsilon = self.epsilon #K
         sigma = self.sigma #m
-        Rhoc, Tc, Pc = 0.310, 1.313, 0.13 #K, Pa
+        Tc, Pc = 1.313, 0.13 #K, Pa
         T, rho, P = 0, 0, 0
         roots, helmholtz = [], []
         if not 'P' in state.keys():
@@ -604,12 +607,12 @@ class EOS():
         eos = self.eos
         state = self.state
         bulkModulus = 0
-        if eos == 'Ideal': 
+        if eos == 'Ideal':
             P = state['P'] #Pa
             bulkModulus = P
         elif eos == 'VdW': bulkModulus = -1 #Check!
         elif eos == 'Soave': bulkModulus = -1 #Check!
-        elif eos == 'Peng-Robinson': 
+        elif eos == 'Peng-Robinson':
             aLowC, alpha, bLow = self.aLowC, self.alpha, self.bLow
             aLow = aLowC*alpha
             T, rho = state['T'], state['Dmolar'] #K, mol/m^3
@@ -638,12 +641,12 @@ class EOS():
         if eos == '':
             raise KeyError ('Equation of state was not defined. Equations available: Peng-Robinson, Soave, Ideal.')
 
-    def ThermodynamicState(self, eos, P_sat=0, **state):
+    def ThermodynamicState(self, eos, P_sat=1e-5, **state):
         self.state = state
         self.eos = eos
         self.P_sat = P_sat #Pa
         self.Errors()
-        if not P_sat: self.FindSaturationPressure()
+        if P_sat == 1e-5: self.FindSaturationPressure()
         if eos == 'Peng-Robinson': self.PengRobinsonEOS()
         elif eos == 'VdW': self.VdWEOS() #Check!
         elif eos == 'Soave': self.SoaveEOS() #Check!
@@ -651,10 +654,10 @@ class EOS():
         elif eos == 'Johnson': self.JohnsonEOS()
         self.ZFactors()
         self.Phi()
-        self.Phase()        
+        self.Phase()
         self.ChemicalPotential()
         self.BulkModulus()
-    
+
 def Help():
     print('Description: It computes the fluid\'s properties according to a given EOS.\n'
           '\tAvailable EOS:\n'
@@ -670,7 +673,7 @@ def Help():
           '\t\tTc (critical temperature), omega (acentric factor), P (system\'s pressure),\n'
           '\t\tT (system\'s temperature), Dmolar (system\'s molar density),\n'
           '\t\tbulkModulus (fluid\'s bulk modulus).\n'
-          '\n'          
+          '\n'
           '\tNote: The script only works with SI units (kg, m, J, K, Pa, mol, ...).\n'
           '\n\n'
           'Instructions:\n'
@@ -703,7 +706,7 @@ if __name__ == '__main__':
     sigma = 0.34e-9 #m
     print('P[Pa]:',P_0)
     print('\nCoolProp') #----------------------------------------------------------
-    print('Psat[Pa]:',Psat) 
+    print('Psat[Pa]:',Psat)
     print('Z:',PropsSI('Z','T',T_0,'P',P_0,molName))
     print('Dmolar[mol/m^3]:',PropsSI('Dmolar','T',T_0,'P',P_0,molName))
     print('phase:',PhaseSI('T',T_0,'P',P_0,molName))
