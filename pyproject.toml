@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling", "numpy", "scipy"]
+build-backend = "hatchling.build"
+[project]
+name = "EOS"
+version = "0.0.1"
+authors = [
+  { name="Santiago A. Flores Roman", email="saf5@njit.edu" },
+]
+description = "Given the critical point, acentric factor, and molar mass, this script outputs some thermodynamic properties (such as chemical potentials) using an equation of state as basis (such as Peng-Robinson EOS)."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
