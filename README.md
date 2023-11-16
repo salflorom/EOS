@@ -33,10 +33,19 @@ Available properties:
 Note 1: The script uses the following units: kg, kg/mol, m, J/mol, K (only for T, and Tc), Pa.
 Note 2: As the EOSs implemented don't predict exactly the saturation pressure, the user can input this value when calling ThermodynamicState. See Example 1.
 
+## Installation
+1. Clone the git repo.
+```bash
+   cd EOS
+   pip install .
+```
+
 ## Instructions
 1. Import the script.
-   Example: ```import EOS```
-2. Create the fluid.
+   ```python
+   from EOS import EOS
+   ```
+3. Create the fluid.
 -  Example 1:
    ```python
    Tcrit = critical_temperature  # K
