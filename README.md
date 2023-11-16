@@ -85,3 +85,11 @@ Note 2: As the EOSs implemented don't predict exactly the saturation pressure, t
     print(benzene.zFactor)
     print(benzene.phase)
     ```
+
+## Build
+EOS python package made by Geordy Jomon
+```bash
+python3 -m pip install --upgrade build
+python3 -m build
+pip install .
+```
