@@ -3,7 +3,7 @@ requires = ["hatchling", "numpy", "scipy"]
 build-backend = "hatchling.build"
 [project]
 name = "EOS"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
   { name="Santiago A. Flores Roman", email="saf5@njit.edu" },
 ]

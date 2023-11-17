@@ -34,8 +34,9 @@ Note 1: The script uses the following units: kg, kg/mol, m, J/mol, K (only for T
 Note 2: As the EOSs implemented don't predict exactly the saturation pressure, the user can input this value when calling ThermodynamicState. See Example 1.
 
 ## Installation
-1. Clone the git repo.
+1. Clone the git repo and install using pip.
 ```bash
+   git clone https://github.com/GeordyJ/EOS.git
    cd EOS
    pip install .
 ```
@@ -43,7 +44,7 @@ Note 2: As the EOSs implemented don't predict exactly the saturation pressure, t
 ## Instructions
 1. Import the script.
    ```python
-   from EOS import EOS
+   import EOS
    ```
 3. Create the fluid.
 -  Example 1:
