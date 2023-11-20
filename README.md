@@ -1,5 +1,6 @@
 # EOS
 ## Author: Santiago A. Flores Roman
+## Contributor: Geordy Jomon
 
 ## Description
 It computes the fluid's properties according to a given EOS.
@@ -8,7 +9,7 @@ Available EOS:
 - Soave (Soave-Redlich-Kwong)
 - Ideal (Ideal gas)
 - Johnson (Lennard-Jones)
-- VdW (Van der Waals)
+- VdW (Van der Waals): Under development.
 
 Available properties:
 - phi (fugacity coefficient)
@@ -16,7 +17,7 @@ Available properties:
 - mu (chemical potential)
 - idealMu (ideal part of mu)
 - excessMu (excess part of mu)
-- phase (liquid or vapour)
+- phase (liquid or vapor)
 - mass (fluid's mass)
 - molarMass (fluid's molar mass)
 - Pc (critical pressure)
@@ -30,8 +31,8 @@ Available properties:
 - zFactor (compressibility factor)
 - roots (solutions of EOS [fluid's densities])
 
-Note 1: The script uses the following units: kg, kg/mol, m, J/mol, K (only for T, and Tc), Pa.
-Note 2: As the EOSs implemented don't predict exactly the saturation pressure, the user can input this value when calling ThermodynamicState. See Example 1.
+Note 1: The script uses the following units: kg, kg/mol, m, J/mol, K (for T, Tc, mu, idealMu, and excessMu), Pa.
+Note 2: As the EOSs implemented may predict different saturation pressures for the same fluid, the user can input this value when calling ThermodynamicState (see Example 1). Setting P_sat in advance reduces the time consumed for its computation.
 
 ## Installation
 1. Clone the git repo and install using pip.
