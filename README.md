@@ -1,6 +1,14 @@
 # EOS
+
 ## Author: Santiago A. Flores Roman
 ## Contributor: Geordy Jomon
+
+<!--toc:start-->
+- [Description](#description)
+- [Installation](#installation)
+- [Instructions](#instructions)
+- [Build](#build)
+<!--toc:end-->
 
 ## Description
 It computes the fluid's properties according to a given EOS.
@@ -29,15 +37,16 @@ Available properties:
 - P_sat (saturation pressure)
 - bulkModulus (bulk modulus or reciprocal of isothermal compressibility)
 - zFactor (compressibility factor)
-- roots (solutions of EOS [fluid's densities])
+- roots (solutions of EOS (fluid's densities))
 
-Note 1: The script uses the following units: kg, kg/mol, m, J/mol, K (for T, Tc, mu, idealMu, and excessMu), Pa.
-Note 2: As the EOSs implemented may predict different saturation pressures for the same fluid, the user can input this value when calling ThermodynamicState (see Example 1). Setting P_sat in advance reduces the time consumed for its computation.
+### Things to note-
+1. The script uses the following units: kg, kg/mol, m, J/mol, K (for T, Tc, mu, idealMu, and excessMu), Pa.
+2. Note 2: As the EOSs implemented may predict different saturation pressures for the same fluid, the user can input this value when calling ThermodynamicState (see Example 1). Setting P_sat in advance reduces the time consumed for its computation.
 
 ## Installation
 1. Clone the git repo and install using pip.
 ```bash
-   git clone https://github.com/GeordyJ/EOS.git
+   git clone https://github.com/salflorom/EOS.git
    cd EOS
    pip install .
 ```
@@ -69,8 +78,7 @@ Note 2: As the EOSs implemented may predict different saturation pressures for t
     benzene.ThermodynamicState(eos='Ideal Gas', T=300, Dmolar=...)
     benzene.ThermodynamicState(eos='Soave', P=300, Dmolar=...)
     benzene.ThermodynamicState(eos='VdW', P=1e5, T=..., P_sat=101235)
-    benzene.ThermodynamicState(eos='Johnson', P=1e5, T=...)
-    ```
+    benzene.ThermodynamicState(eos='Johnson', P=1e5, T=...) ```
 4. Call any fluid properties.
     ```python
     print(benzene.phi)
@@ -89,7 +97,7 @@ Note 2: As the EOSs implemented may predict different saturation pressures for t
     ```
 
 ## Build
-EOS python package made by Geordy Jomon
+EOS python package made by Geordy Jomon.
 ```bash
 python3 -m pip install --upgrade build
 python3 -m build
